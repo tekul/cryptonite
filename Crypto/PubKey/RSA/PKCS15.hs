@@ -30,7 +30,6 @@ import           Crypto.PubKey.RSA.Prim
 import           Crypto.PubKey.RSA (generateBlinder)
 import           Crypto.Hash
 
-import           Data.ByteString (ByteString)
 import           Data.Word
 
 import           Crypto.Internal.ByteArray (ByteArray, Bytes)
@@ -136,19 +135,20 @@ unpad packed
 -- information from the timing of the operation, the blinder can be set to None.
 --
 -- If unsure always set a blinder or use decryptSafer
-decrypt :: Maybe Blinder -- ^ optional blinder
+decrypt :: ByteArray b
+        => Maybe Blinder -- ^ optional blinder
         -> PrivateKey    -- ^ RSA private key
-        -> ByteString    -- ^ cipher text
-        -> Either Error ByteString
+        -> b             -- ^ cipher text
+        -> Either Error b
 decrypt blinder pk c
     | B.length c /= (private_size pk) = Left MessageSizeIncorrect
     | otherwise                       = unpad $ dp blinder pk c
 
 -- | decrypt message using the private key and by automatically generating a blinder.
-decryptSafer :: MonadRandom m
+decryptSafer :: (ByteArray bytearray, MonadRandom m)
              => PrivateKey -- ^ RSA private key
-             -> ByteString -- ^ cipher text
-             -> m (Either Error ByteString)
+             -> bytearray  -- ^ cipher text
+             -> m (Either Error bytearray)
 decryptSafer pk b = do
     blinder <- generateBlinder (private_n pk)
     return (decrypt (Just blinder) pk b)
@@ -156,7 +156,10 @@ decryptSafer pk b = do
 -- | encrypt a bytestring using the public key.
 --
 -- the message needs to be smaller than the key size - 11
-encrypt :: MonadRandom m => PublicKey -> ByteString -> m (Either Error ByteString)
+encrypt :: (ByteArray bytearray, MonadRandom m)
+        => PublicKey
+        -> bytearray
+        -> m (Either Error bytearray)
 encrypt pk m = do
     r <- pad (public_size pk) m
     case r of
@@ -169,30 +172,30 @@ encrypt pk m = do
 -- information from the timing of the operation, the blinder can be set to None.
 --
 -- If unsure always set a blinder or use signSafer
-sign :: HashAlgorithmASN1 hashAlg
+sign :: (ByteArray bytearray, HashAlgorithmASN1 hashAlg)
      => Maybe Blinder -- ^ optional blinder
      -> Maybe hashAlg -- ^ hash algorithm
      -> PrivateKey    -- ^ private key
-     -> ByteString    -- ^ message to sign
-     -> Either Error ByteString
+     -> bytearray     -- ^ message to sign
+     -> Either Error bytearray
 sign blinder hashDescr pk m = dp blinder pk `fmap` makeSignature hashDescr (private_size pk) m
 
 -- | sign message using the private key and by automatically generating a blinder.
-signSafer :: (HashAlgorithmASN1 hashAlg, MonadRandom m)
+signSafer :: (ByteArray bytearray, HashAlgorithmASN1 hashAlg, MonadRandom m)
           => Maybe hashAlg -- ^ Hash algorithm
           -> PrivateKey    -- ^ private key
-          -> ByteString    -- ^ message to sign
-          -> m (Either Error ByteString)
+          -> bytearray     -- ^ message to sign
+          -> m (Either Error bytearray)
 signSafer hashAlg pk m = do
     blinder <- generateBlinder (private_n pk)
     return (sign (Just blinder) hashAlg pk m)
 
 -- | verify message with the signed message
-verify :: HashAlgorithmASN1 hashAlg
+verify :: (ByteArray b, HashAlgorithmASN1 hashAlg)
        => Maybe hashAlg
        -> PublicKey
-       -> ByteString
-       -> ByteString
+       -> b
+       -> b
        -> Bool
 verify hashAlg pk m sm =
     case makeSignature hashAlg (public_size pk) m of
@@ -200,10 +203,10 @@ verify hashAlg pk m sm =
         Right s -> s == (ep pk sm)
 
 -- | make signature digest, used in 'sign' and 'verify'
-makeSignature :: HashAlgorithmASN1 hashAlg
+makeSignature :: (ByteArray b, HashAlgorithmASN1 hashAlg)
               => Maybe hashAlg -- ^ optional hashing algorithm
               -> Int
-              -> ByteString
-              -> Either Error ByteString
+              -> b
+              -> Either Error b
 makeSignature Nothing        klen m = padSignature klen m
 makeSignature (Just hashAlg) klen m = padSignature klen (hashDigestASN1 $ hashWith hashAlg m)

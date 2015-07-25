@@ -27,12 +27,10 @@ import           Crypto.PubKey.MaskGenFunction
 import           Crypto.PubKey.RSA.Prim
 import           Crypto.PubKey.RSA (generateBlinder)
 import           Crypto.PubKey.Internal (and')
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as B
-import           Data.Bits (xor)
+import           Data.ByteString
 
-import           Crypto.Internal.ByteArray (ByteArrayAccess, ByteArray)
-import qualified Crypto.Internal.ByteArray as B (convert)
+import           Crypto.Internal.ByteArray (ByteArrayAccess, ByteArray, Bytes)
+import qualified Crypto.Internal.ByteArray as B
 
 -- | Parameters for OAEP encryption/decryption
 data OAEPParams hash seed output = OAEPParams
@@ -42,7 +40,7 @@ data OAEPParams hash seed output = OAEPParams
     }
 
 -- | Default Params with a specified hash function
-defaultOAEPParams :: (ByteArrayAccess seed, ByteArray output, HashAlgorithm hash)
+defaultOAEPParams :: (ByteArray seed, ByteArray output, HashAlgorithm hash)
                   => hash
                   -> OAEPParams hash seed output
 defaultOAEPParams hashAlg =
@@ -52,12 +50,12 @@ defaultOAEPParams hashAlg =
                }
 
 -- | Encrypt a message using OAEP with a predefined seed.
-encryptWithSeed :: HashAlgorithm hash
-                => ByteString      -- ^ Seed
-                -> OAEPParams hash ByteString ByteString -- ^ OAEP params to use for encryption
+encryptWithSeed :: (ByteArray seed, ByteArray message, ByteArray output, HashAlgorithm hash)
+                => seed            -- ^ Seed
+                -> OAEPParams hash seed output -- ^ OAEP params to use for encryption
                 -> PublicKey       -- ^ Public key.
-                -> ByteString      -- ^ Message to encrypt
-                -> Either Error ByteString
+                -> message         -- ^ Message to encrypt
+                -> Either Error output
 encryptWithSeed seed oaep pk msg
     | k < 2*hashLen+2          = Left InvalidParameters
     | B.length seed /= hashLen = Left InvalidParameters
@@ -72,19 +70,19 @@ encryptWithSeed seed oaep pk msg
 
           -- put fields
           ps         = B.replicate (k - mLen - 2*hashLen - 2) 0
-          db         = B.concat [B.convert labelHash, ps, B.singleton 0x1, msg]
+          db         = B.concat [B.convert labelHash, ps, B.pack [0x1], msg] :: Bytes
           dbmask     = mgf seed (k - hashLen - 1)
-          maskedDB   = B.pack $ B.zipWith xor db dbmask
+          maskedDB   = B.xor db dbmask
           seedMask   = mgf maskedDB hashLen
-          maskedSeed = B.pack $ B.zipWith xor seed seedMask
-          em         = B.concat [B.singleton 0x0,maskedSeed,maskedDB]
+          maskedSeed = B.xor seed seedMask
+          em         = B.concat [B.singleton 0x0, maskedSeed, maskedDB]
 
 -- | Encrypt a message using OAEP
-encrypt :: (HashAlgorithm hash, MonadRandom m)
-        => OAEPParams hash ByteString ByteString -- ^ OAEP params to use for encryption.
+encrypt :: (ByteArray seed, ByteArray message, ByteArray output, HashAlgorithm hash, MonadRandom m)
+        => OAEPParams hash seed output -- ^ OAEP params to use for encryption.
         -> PublicKey       -- ^ Public key.
-        -> ByteString      -- ^ Message to encrypt
-        -> m (Either Error ByteString)
+        -> message         -- ^ Message to encrypt
+        -> m (Either Error output)
 encrypt oaep pk msg = do
     seed <- getRandomBytes hashLen
     return (encryptWithSeed seed oaep pk msg)
@@ -94,11 +92,11 @@ encrypt oaep pk msg = do
 -- | un-pad a OAEP encoded message.
 --
 -- It doesn't apply the RSA decryption primitive
-unpad :: HashAlgorithm hash
-      => OAEPParams hash ByteString ByteString -- ^ OAEP params to use
+unpad :: (ByteArray seed, ByteArray message, ByteArray output, HashAlgorithm hash)
+      => OAEPParams hash seed output -- ^ OAEP params to use
       -> Int             -- ^ size of the key in bytes
-      -> ByteString      -- ^ encoded message (not encrypted)
-      -> Either Error ByteString
+      -> message         -- ^ encoded message (not encrypted)
+      -> Either Error output
 unpad oaep k em
     | paddingSuccess = Right msg
     | otherwise      = Left MessageNotRecognized
@@ -109,13 +107,13 @@ unpad oaep k em
           -- getting em's fields
           (pb, em0)  = B.splitAt 1 em
           (maskedSeed,maskedDB) = B.splitAt hashLen em0
-          seedMask   = mgf maskedDB hashLen
-          seed       = B.pack $ B.zipWith xor maskedSeed seedMask
+          seedMask   = mgf (B.convert maskedDB) hashLen
+          seed       = B.xor maskedSeed seedMask
           dbmask     = mgf seed (k - hashLen - 1)
-          db         = B.pack $ B.zipWith xor maskedDB dbmask
+          db         = B.xor maskedDB dbmask
           -- getting db's fields
           (labelHash',db1) = B.splitAt hashLen db
-          (_,db2)    = B.break (/= 0) db1
+          (_,db2)    = B.span (== 0) db1
           (ps1,msg)  = B.splitAt 1 db2
 
           paddingSuccess = and' [ labelHash' == labelHash -- no need for constant eq
@@ -129,12 +127,12 @@ unpad oaep k em
 -- information from the timing of the operation, the blinder can be set to None.
 --
 -- If unsure always set a blinder or use decryptSafer
-decrypt :: HashAlgorithm hash
+decrypt :: (ByteArray seed, ByteArray ciphertext, ByteArray output, HashAlgorithm hash)
         => Maybe Blinder   -- ^ Optional blinder
-        -> OAEPParams hash ByteString ByteString -- ^ OAEP params to use for decryption
+        -> OAEPParams hash seed output -- ^ OAEP params to use for decryption
         -> PrivateKey      -- ^ Private key
-        -> ByteString      -- ^ Cipher text
-        -> Either Error ByteString
+        -> ciphertext      -- ^ Cipher text
+        -> Either Error output
 decrypt blinder oaep pk cipher
     | B.length cipher /= k = Left MessageSizeIncorrect
     | k < 2*hashLen+2      = Left InvalidParameters
@@ -144,11 +142,11 @@ decrypt blinder oaep pk cipher
           hashLen    = hashDigestSize (oaepHash oaep)
 
 -- | Decrypt a ciphertext using OAEP and by automatically generating a blinder.
-decryptSafer :: (HashAlgorithm hash, MonadRandom m)
-             => OAEPParams hash ByteString ByteString -- ^ OAEP params to use for decryption
+decryptSafer :: (ByteArray seed, ByteArray ciphertext, ByteArray output, HashAlgorithm hash, MonadRandom m)
+             => OAEPParams hash seed output -- ^ OAEP params to use for decryption
              -> PrivateKey -- ^ Private key
-             -> ByteString -- ^ Cipher text
-             -> m (Either Error ByteString)
+             -> ciphertext -- ^ Cipher text
+             -> m (Either Error output)
 decryptSafer oaep pk cipher = do
     blinder <- generateBlinder (private_n pk)
     return (decrypt (Just blinder) oaep pk cipher)

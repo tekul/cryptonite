@@ -67,13 +67,14 @@ initialize key
 {-# NOINLINE initialize #-}
 
 -- | update a context with a bytestring
+-- | update a context with a bytearray
 update :: ByteArrayAccess ba => State -> ba -> State
 update (State prevCtx) d = State $ B.copyAndFreeze prevCtx $ \ctxPtr ->
     B.withByteArray d $ \dataPtr ->
         c_poly1305_update (castPtr ctxPtr) dataPtr (fromIntegral $ B.length d)
 {-# NOINLINE update #-}
 
--- | updates a context with multiples bytestring
+-- | updates a context with multiples bytearrays
 updates :: ByteArrayAccess ba => State -> [ba] -> State
 updates (State prevCtx) d = State $ B.copyAndFreeze prevCtx (loop d)
   where loop []     _      = return ()
@@ -82,7 +83,7 @@ updates (State prevCtx) d = State $ B.copyAndFreeze prevCtx (loop d)
             loop xs ctxPtr
 {-# NOINLINE updates #-}
 
--- | finalize the context into a digest bytestring
+-- | finalize the context into a digest bytearray
 finalize :: State -> Auth
 finalize (State prevCtx) = Auth $ B.allocAndFreeze 16 $ \dst -> do
     _ <- B.copy prevCtx (\ctxPtr -> c_poly1305_finalize dst (castPtr ctxPtr)) :: IO ScrubbedBytes

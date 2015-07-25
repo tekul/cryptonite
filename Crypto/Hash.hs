@@ -47,7 +47,7 @@ import           Crypto.Internal.ByteArray (ByteArrayAccess)
 import qualified Crypto.Internal.ByteArray as B
 import qualified Data.ByteString.Lazy as L
 
--- | Hash a strict bytestring into a digest.
+-- | Hash a bytearray into a digest.
 hash :: (ByteArrayAccess ba, HashAlgorithm a) => ba -> Digest a
 hash bs = hashFinalize $ hashUpdate hashInit bs
 
@@ -64,11 +64,11 @@ hashInit = doInit undefined B.allocAndFreeze
         doInit alg alloc = Context $ alloc (hashInternalContextSize alg) hashInternalInit
 {-# NOINLINE hashInit #-}
 
--- | run hashUpdates on one single bytestring and return the updated context.
+-- | run hashUpdates on one single bytearray and return the updated context.
 hashUpdate :: (ByteArrayAccess ba, HashAlgorithm a) => Context a -> ba -> Context a
 hashUpdate ctx b = hashUpdates ctx [b]
 
--- | Update the context with a list of strict bytestring,
+-- | Update the context with a list of bytearrays,
 -- and return a new context with the updates.
 hashUpdates :: (HashAlgorithm a, ByteArrayAccess ba)
             => Context a

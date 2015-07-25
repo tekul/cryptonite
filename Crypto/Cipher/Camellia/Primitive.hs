@@ -137,7 +137,7 @@ setKeyInterim keyseed = (w64tow128 kL, w64tow128 kR, w64tow128 kA, w64tow128 kB)
 
 -- | Initialize a 128-bit key
 --
--- Return the initialized key or a error message if the given 
+-- Return the initialized key or a error message if the given
 -- keyseed was not 16-bytes in length.
 initCamellia :: ByteArray key
              => key -- ^ The key to create the camellia context
@@ -169,7 +169,7 @@ initCamellia key
             }
 
 feistel :: Word64 -> Word64 -> Word64
-feistel fin sk = 
+feistel fin sk =
     let x = fin `xor` sk in
     let (t1, t2, t3, t4, t5, t6, t7, t8) = w64tow8 x in
     let t1' = sbox1 t1 in
@@ -268,14 +268,14 @@ encryptBlock = doBlock Encrypt
 decryptBlock :: Camellia -> Word128 -> Word128
 decryptBlock = doBlock Decrypt
 
--- | Encrypts the given ByteString using the given Key
+-- | Encrypts the given ByteArray using the given Key
 encrypt :: ByteArray ba
         => Camellia     -- ^ The key to use
         -> ba           -- ^ The data to encrypt
         -> ba
 encrypt key = B.mapAsWord128 (encryptBlock key)
 
--- | Decrypts the given ByteString using the given Key
+-- | Decrypts the given ByteArray using the given Key
 decrypt :: ByteArray ba
         => Camellia     -- ^ The key to use
         -> ba           -- ^ The data to decrypt

@@ -10,7 +10,7 @@ import Imports
 rsaKeyInt = PrivateKey
     { private_pub = PublicKey
         { public_n = 0xbbf82f090682ce9c2338ac2b9da871f7368d07eed41043a440d6b6f07454f51fb8dfbaaf035c02ab61ea48ceeb6fcd4876ed520d60e1ec4619719d8a5b8b807fafb8e0a3dfc737723ee6b4b7d93a2584ee6a649d060953748834b2454598394ee0aab12d7b61a51f527a9a41f6c1687fe2537298ca2a8f5946f8e5fd091dbdcb
-        , public_e = 0x11 
+        , public_e = 0x11
         , public_size = 128
         }
     , private_d = 0xa5dafc5341faf289c4b988db30c1cdf83f31251e0668b42784813801579641b29410b3c7998d6bc465745e5c392669d6870da2c082a939e37fdcb82ec93edac97ff3ad5950accfbc111c76f1a9529444e56aaf68c56c092cd38dc3bef5d20a939926ed4f74a13eddfbe1a1cecc4894af9428c2b7b8883fe4463a4bc85b1cb3c1
@@ -82,10 +82,12 @@ vectorsKey1 =
     ]
 
 doEncryptionTest key (i, vec) = testCase (show i) (Right (cipherText vec) @=? actual)
-    where actual = OAEP.encryptWithSeed (seed vec) (OAEP.defaultOAEPParams SHA1) key (message vec) 
+    where actual = OAEP.encryptWithSeed (seed vec) oaepParams key (message vec)
 
 doDecryptionTest key (i, vec) = testCase (show i) (Right (message vec) @=? actual)
-    where actual = OAEP.decrypt Nothing (OAEP.defaultOAEPParams SHA1) key (cipherText vec)
+    where actual = OAEP.decrypt Nothing oaepParams key (cipherText vec)
+
+oaepParams = OAEP.defaultOAEPParams SHA1 :: OAEP.OAEPParams SHA1 ByteString ByteString
 
 oaepTests = testGroup "RSA-OAEP"
     [ testGroup "internal"
